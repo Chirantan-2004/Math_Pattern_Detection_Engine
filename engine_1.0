@@ -1,0 +1,1853 @@
+"""
+Enhanced Mathematical Principle Identifier (MVP 2)
+A comprehensive system for detecting mathematical patterns, Fibonacci sequences,
+grid classifications, and complexity analysis with educational explanations.
+
+Designed for Google Colab with visualization capabilities.
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+import cv2
+from scipy import ndimage
+from scipy.spatial.distance import pdist, squareform
+from scipy.spatial import ConvexHull, Voronoi
+from sklearn.cluster import DBSCAN
+from collections import Counter, defaultdict
+import math
+import json
+from typing import List, Tuple, Dict, Optional, Any
+import warnings
+warnings.filterwarnings('ignore')
+
+class MathematicalPrincipleIdentifier:
+    def __init__(self):
+        self.fibonacci_sequence = self._generate_fibonacci(50)
+        self.golden_ratio = (1 + math.sqrt(5)) / 2
+        self.educational_content = self._load_educational_content()
+
+    def _generate_fibonacci(self, n: int) -> List[int]:
+        """Generate Fibonacci sequence up to n terms"""
+        if n <= 0:
+            return []
+        elif n == 1:
+            return [0]
+        elif n == 2:
+            return [0, 1]
+
+        fib = [0, 1]
+        for i in range(2, n):
+            fib.append(fib[i-1] + fib[i-2])
+        return fib
+
+    def _load_educational_content(self) -> Dict[str, str]:
+        """Load educational explanations for mathematical principles"""
+        return {
+            'fibonacci_spiral': """
+            The Fibonacci Spiral is a logarithmic spiral that approximates the golden spiral.
+            It's constructed by drawing quarter-circle arcs connecting opposite corners of
+            squares in the Fibonacci tiling. This pattern appears frequently in nature,
+            including nautilus shells, sunflower seed arrangements, and galaxy formations.
+            """,
+            'golden_ratio': """
+            The Golden Ratio (φ ≈ 1.618) is a mathematical constant that appears when the
+            ratio of two quantities equals the ratio of their sum to the larger quantity.
+            It's considered aesthetically pleasing and appears in art, architecture, and nature.
+            """,
+            'hexagonal_grid': """
+            Hexagonal grids are the most efficient way to divide a plane into regions of
+            equal area with the least perimeter. This is known as the Honeycomb Conjecture,
+            proven in 1999. Bees use this principle to build their honeycombs efficiently.
+            """,
+            'triangular_grid': """
+            Triangular grids tessellate the plane using equilateral triangles. They have
+            unique properties in graph theory and are used in finite element analysis,
+            crystallography, and game design. Each vertex connects to exactly 6 neighbors.
+            """,
+            'square_grid': """
+            Square grids are the most common Cartesian coordinate system. They tessellate
+            the plane with squares and are fundamental in computer graphics, digital imaging,
+            and many mathematical applications. Each interior vertex connects to 4 neighbors.
+            """,
+            'radial_symmetry': """
+            Radial symmetry occurs when a pattern looks the same after rotation around a
+            central point. Common in nature (flowers, starfish) and art (mandalas, rose windows).
+            The order of symmetry indicates how many times the pattern repeats in a full rotation.
+            """,
+            'fractal_pattern': """
+            Fractals are self-similar patterns that repeat at every scale. They have fractional
+            dimensions and are found throughout nature in coastlines, trees, clouds, and
+            blood vessels. They demonstrate how simple rules can create complex structures.
+            """
+        }
+
+class PatternDetector:
+    def __init__(self, identifier: MathematicalPrincipleIdentifier):
+        self.identifier = identifier
+
+    def detect_dots_from_image(self, image: np.ndarray) -> List[Tuple[int, int]]:
+        """Detect dot positions from an image using computer vision"""
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        else:
+            gray = image.copy()
+
+        # Adaptive thresholding
+        binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESHOLD_GAUSSIAN_C,
+                                     cv2.THRESH_BINARY_INV, 11, 2)
+
+        # Find contours
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        dots = []
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if 5 < area < 1000:  # Filter by area
+                # Calculate centroid
+                M = cv2.moments(contour)
+                if M["m00"] != 0:
+                    cx = int(M["m10"] / M["m00"])
+                    cy = int(M["m01"] / M["m00"])
+                    dots.append((cx, cy))
+
+        return dots
+
+class FibonacciAnalyzer:
+    def __init__(self, identifier: MathematicalPrincipleIdentifier):
+        self.identifier = identifier
+
+    def analyze_spiral_pattern(self, points: List[Tuple[float, float]]) -> Dict[str, Any]:
+        """Analyze points for Fibonacci spiral characteristics"""
+        if len(points) < 5:
+            return {'is_fibonacci_spiral': False, 'confidence': 0.0}
+
+        # Convert to numpy array and center
+        points_array = np.array(points)
+        center = np.mean(points_array, axis=0)
+        centered_points = points_array - center
+
+        # Convert to polar coordinates
+        angles = np.arctan2(centered_points[:, 1], centered_points[:, 0])
+        distances = np.sqrt(np.sum(centered_points**2, axis=1))
+
+        # Sort by angle
+        sorted_indices = np.argsort(angles)
+        sorted_distances = distances[sorted_indices]
+        sorted_angles = angles[sorted_indices]
+
+        # Analyze spiral characteristics
+        spiral_analysis = self._analyze_spiral_growth(sorted_distances, sorted_angles)
+        fibonacci_match = self._check_fibonacci_ratios(sorted_distances)
+
+        result = {
+            'is_fibonacci_spiral': spiral_analysis['is_logarithmic'] and fibonacci_match['has_golden_ratio'],
+            'confidence': min(spiral_analysis['confidence'], fibonacci_match['confidence']),
+            'growth_rate': spiral_analysis['growth_rate'],
+            'golden_ratio_presence': fibonacci_match['golden_ratio_score'],
+            'spiral_turns': spiral_analysis['turns'],
+            'analysis_details': {
+                'spiral_analysis': spiral_analysis,
+                'fibonacci_analysis': fibonacci_match
+            }
+        }
+
+        return result
+
+    def _analyze_spiral_growth(self, distances: np.ndarray, angles: np.ndarray) -> Dict[str, Any]:
+        """Analyze if the growth follows a logarithmic spiral pattern"""
+        if len(distances) < 5:
+            return {'is_logarithmic': False, 'confidence': 0.0, 'growth_rate': 0.0, 'turns': 0}
+
+        # Calculate number of turns
+        angle_diff = np.diff(angles)
+        angle_diff[angle_diff < -np.pi] += 2*np.pi
+        angle_diff[angle_diff > np.pi] -= 2*np.pi
+        total_angle = np.sum(angle_diff)
+        turns = abs(total_angle) / (2 * np.pi)
+
+        # Fit logarithmic spiral: r = a * e^(b*θ)
+        # Taking log: ln(r) = ln(a) + b*θ
+        valid_distances = distances[distances > 0]
+        valid_angles = angles[:len(valid_distances)]
+
+        if len(valid_distances) < 3:
+            return {'is_logarithmic': False, 'confidence': 0.0, 'growth_rate': 0.0, 'turns': turns}
+
+        log_distances = np.log(valid_distances)
+
+        # Linear regression
+        A = np.vstack([valid_angles, np.ones(len(valid_angles))]).T
+        try:
+            coeffs, residuals, _, _ = np.linalg.lstsq(A, log_distances, rcond=None)
+            growth_rate = coeffs[0]
+
+            # Calculate R-squared
+            ss_res = residuals[0] if len(residuals) > 0 else np.sum((log_distances - np.dot(A, coeffs))**2)
+            ss_tot = np.sum((log_distances - np.mean(log_distances))**2)
+            r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+
+            confidence = max(0.0, min(1.0, r_squared))
+            is_logarithmic = confidence > 0.7
+
+            return {
+                'is_logarithmic': is_logarithmic,
+                'confidence': confidence,
+                'growth_rate': growth_rate,
+                'turns': turns,
+                'r_squared': r_squared
+            }
+        except:
+            return {'is_logarithmic': False, 'confidence': 0.0, 'growth_rate': 0.0, 'turns': turns}
+
+    def _check_fibonacci_ratios(self, distances: np.ndarray) -> Dict[str, Any]:
+        """Check if distances follow Fibonacci ratios"""
+        if len(distances) < 3:
+            return {'has_golden_ratio': False, 'confidence': 0.0, 'golden_ratio_score': 0.0}
+
+        # Calculate consecutive ratios
+        ratios = []
+        for i in range(1, len(distances)):
+            if distances[i-1] > 0:
+                ratios.append(distances[i] / distances[i-1])
+
+        if not ratios:
+            return {'has_golden_ratio': False, 'confidence': 0.0, 'golden_ratio_score': 0.0}
+
+        ratios = np.array(ratios)
+
+        # Check how close ratios are to golden ratio
+        golden_ratio_diffs = np.abs(ratios - self.identifier.golden_ratio)
+        golden_ratio_score = 1.0 - np.mean(golden_ratio_diffs) / self.identifier.golden_ratio
+        golden_ratio_score = max(0.0, golden_ratio_score)
+
+        # Check for Fibonacci-like progression
+        fib_score = self._calculate_fibonacci_score(distances)
+
+        overall_score = (golden_ratio_score + fib_score) / 2
+        has_golden_ratio = overall_score > 0.6
+
+        return {
+            'has_golden_ratio': has_golden_ratio,
+            'confidence': overall_score,
+            'golden_ratio_score': golden_ratio_score,
+            'fibonacci_score': fib_score,
+            'ratios': ratios.tolist()
+        }
+
+    def _calculate_fibonacci_score(self, values: np.ndarray) -> float:
+        """Calculate how well values match Fibonacci sequence properties"""
+        if len(values) < 3:
+            return 0.0
+
+        # Normalize values
+        normalized = values / np.max(values)
+
+        # Check if any subsequence matches Fibonacci ratios
+        best_score = 0.0
+
+        for start in range(len(normalized) - 2):
+            for length in range(3, min(len(normalized) - start + 1, 10)):
+                subseq = normalized[start:start+length]
+                score = self._match_fibonacci_sequence(subseq)
+                best_score = max(best_score, score)
+
+        return best_score
+
+    def _match_fibonacci_sequence(self, sequence: np.ndarray) -> float:
+        """Match a sequence against Fibonacci properties"""
+        if len(sequence) < 3:
+            return 0.0
+
+        # Check if ratios approach golden ratio
+        ratios = []
+        for i in range(1, len(sequence)):
+            if sequence[i-1] > 0:
+                ratios.append(sequence[i] / sequence[i-1])
+
+        if not ratios:
+            return 0.0
+
+        ratios = np.array(ratios)
+        target_ratio = self.identifier.golden_ratio
+
+        # Score based on how ratios converge to golden ratio
+        convergence_score = 0.0
+        for i, ratio in enumerate(ratios):
+            weight = (i + 1) / len(ratios)  # Later ratios are more important
+            error = abs(ratio - target_ratio) / target_ratio
+            convergence_score += weight * max(0, 1 - error)
+
+        return convergence_score / len(ratios) if ratios.size > 0 else 0.0
+
+class GridClassifier:
+    def __init__(self, identifier: MathematicalPrincipleIdentifier):
+        self.identifier = identifier
+
+    def classify_grid_type(self, points: List[Tuple[float, float]]) -> Dict[str, Any]:
+        """Classify the type of grid formed by points"""
+        if len(points) < 4:
+            return {'grid_type': 'insufficient_points', 'confidence': 0.0}
+
+        points_array = np.array(points)
+
+        # Analyze different grid types
+        square_score = self._analyze_square_grid(points_array)
+        triangular_score = self._analyze_triangular_grid(points_array)
+        hexagonal_score = self._analyze_hexagonal_grid(points_array)
+        random_score = self._analyze_random_pattern(points_array)
+
+        scores = {
+            'square': square_score,
+            'triangular': triangular_score,
+            'hexagonal': hexagonal_score,
+            'random': random_score
+        }
+
+        # Determine best match
+        best_type = max(scores, key=lambda k: scores[k]['score'])
+        best_score = scores[best_type]['score']
+
+        # If no clear pattern, check for other structures
+        if best_score < 0.5:
+            radial_score = self._analyze_radial_pattern(points_array)
+            if radial_score['score'] > best_score:
+                best_type = 'radial'
+                best_score = radial_score['score']
+                scores['radial'] = radial_score
+
+        return {
+            'grid_type': best_type,
+            'confidence': best_score,
+            'all_scores': scores,
+            'point_count': len(points),
+            'analysis_details': scores[best_type] if best_type in scores else {}
+        }
+
+    def _analyze_square_grid(self, points: np.ndarray) -> Dict[str, Any]:
+        """Analyze if points form a square grid pattern"""
+        if len(points) < 4:
+            return {'score': 0.0, 'details': 'insufficient_points'}
+
+        # Calculate distances between all pairs
+        distances = pdist(points)
+
+        # For a square grid, we expect distances to cluster around specific values
+        # (horizontal, vertical, and diagonal distances)
+        hist, bin_edges = np.histogram(distances, bins=20)
+
+        # Find peaks in the histogram
+        peaks = self._find_histogram_peaks(hist, bin_edges)
+
+        if len(peaks) < 2:
+            return {'score': 0.0, 'details': 'no_clear_distance_clusters'}
+
+        # Check for square grid characteristics
+        min_dist = min(distances[distances > 0]) if len(distances[distances > 0]) > 0 else 1.0
+
+        # Expected ratios for square grid: 1, √2, 2, √5, etc.
+        expected_ratios = [1.0, math.sqrt(2), 2.0, math.sqrt(5), math.sqrt(8), 3.0]
+
+        ratio_scores = []
+        for peak in peaks[:4]:  # Check top 4 peaks
+            peak_ratio = peak / min_dist
+            best_match = min(expected_ratios, key=lambda r: abs(r - peak_ratio))
+            error = abs(best_match - peak_ratio) / best_match
+            ratio_scores.append(max(0, 1 - error))
+
+        # Analyze grid regularity
+        regularity_score = self._calculate_grid_regularity(points, 'square')
+
+        overall_score = (np.mean(ratio_scores) + regularity_score) / 2
+
+        return {
+            'score': overall_score,
+            'details': {
+                'ratio_scores': ratio_scores,
+                'regularity_score': regularity_score,
+                'distance_peaks': peaks,
+                'expected_ratios_found': len([s for s in ratio_scores if s > 0.7])
+            }
+        }
+
+    def _analyze_triangular_grid(self, points: np.ndarray) -> Dict[str, Any]:
+        """Analyze if points form a triangular grid pattern"""
+        if len(points) < 3:
+            return {'score': 0.0, 'details': 'insufficient_points'}
+
+        # For triangular grids, each point should have ~6 neighbors at equal distances
+        neighbor_analysis = self._analyze_neighbor_structure(points, expected_neighbors=6)
+
+        # Check for 60-degree angles (characteristic of triangular grids)
+        angle_score = self._analyze_triangular_angles(points)
+
+        # Distance regularity
+        distances = pdist(points)
+        min_dist = min(distances[distances > 0]) if len(distances[distances > 0]) > 0 else 1.0
+
+        # Expected distance ratios for triangular grid
+        expected_ratios = [1.0, math.sqrt(3), 2.0]
+        distance_score = self._score_distance_ratios(distances, min_dist, expected_ratios)
+
+        overall_score = (neighbor_analysis['score'] + angle_score + distance_score) / 3
+
+        return {
+            'score': overall_score,
+            'details': {
+                'neighbor_score': neighbor_analysis['score'],
+                'angle_score': angle_score,
+                'distance_score': distance_score,
+                'avg_neighbors': neighbor_analysis['avg_neighbors']
+            }
+        }
+
+    def _analyze_hexagonal_grid(self, points: np.ndarray) -> Dict[str, Any]:
+        """Analyze if points form a hexagonal grid pattern"""
+        if len(points) < 6:
+            return {'score': 0.0, 'details': 'insufficient_points'}
+
+        # Hexagonal grids have Voronoi cells that are hexagons
+        voronoi_score = self._analyze_voronoi_regularity(points, expected_sides=6)
+
+        # Each interior point should have exactly 6 neighbors
+        neighbor_analysis = self._analyze_neighbor_structure(points, expected_neighbors=6)
+
+        # Check for characteristic 120-degree angles
+        angle_score = self._analyze_hexagonal_angles(points)
+
+        overall_score = (voronoi_score + neighbor_analysis['score'] + angle_score) / 3
+
+        return {
+            'score': overall_score,
+            'details': {
+                'voronoi_score': voronoi_score,
+                'neighbor_score': neighbor_analysis['score'],
+                'angle_score': angle_score,
+                'avg_neighbors': neighbor_analysis['avg_neighbors']
+            }
+        }
+
+    def _analyze_random_pattern(self, points: np.ndarray) -> Dict[str, Any]:
+        """Analyze if points follow a random distribution"""
+        # Use nearest neighbor distances to test for randomness
+        distances = []
+        for i, point in enumerate(points):
+            other_points = np.delete(points, i, axis=0)
+            if len(other_points) > 0:
+                dists = np.sqrt(np.sum((other_points - point)**2, axis=1))
+                distances.append(np.min(dists))
+
+        if not distances:
+            return {'score': 0.0, 'details': 'no_distances'}
+
+        distances = np.array(distances)
+
+        # For random points, nearest neighbor distances follow exponential distribution
+        # Calculate coefficient of variation
+        cv = np.std(distances) / np.mean(distances) if np.mean(distances) > 0 else 0
+
+        # Random patterns typically have CV around 1.0
+        randomness_score = max(0, 1 - abs(cv - 1.0))
+
+        # Also check for lack of regular structure
+        regularity_score = 1 - self._calculate_overall_regularity(points)
+
+        overall_score = (randomness_score + regularity_score) / 2
+
+        return {
+            'score': overall_score,
+            'details': {
+                'coefficient_of_variation': cv,
+                'randomness_score': randomness_score,
+                'irregularity_score': regularity_score
+            }
+        }
+
+    def _analyze_radial_pattern(self, points: np.ndarray) -> Dict[str, Any]:
+        """Analyze if points form a radial pattern"""
+        if len(points) < 4:
+            return {'score': 0.0, 'details': 'insufficient_points'}
+
+        # Find center (could be centroid or a specific point)
+        center = np.mean(points, axis=0)
+
+        # Calculate distances and angles from center
+        centered_points = points - center
+        distances = np.sqrt(np.sum(centered_points**2, axis=1))
+        angles = np.arctan2(centered_points[:, 1], centered_points[:, 0])
+
+        # Analyze radial structure
+        radial_layers = self._identify_radial_layers(distances)
+        angular_regularity = self._analyze_angular_distribution(angles)
+
+        # Score based on how well points are organized in radial layers
+        layer_score = self._score_radial_layers(radial_layers)
+
+        overall_score = (layer_score + angular_regularity) / 2
+
+        return {
+            'score': overall_score,
+            'details': {
+                'num_layers': len(radial_layers),
+                'layer_score': layer_score,
+                'angular_regularity': angular_regularity,
+                'radial_layers': radial_layers
+            }
+        }
+
+    def _find_histogram_peaks(self, hist: np.ndarray, bin_edges: np.ndarray) -> List[float]:
+        """Find peaks in histogram"""
+        peaks = []
+        for i in range(1, len(hist) - 1):
+            if hist[i] > hist[i-1] and hist[i] > hist[i+1] and hist[i] > np.max(hist) * 0.1:
+                peak_center = (bin_edges[i] + bin_edges[i+1]) / 2
+                peaks.append(peak_center)
+        return sorted(peaks)
+
+    def _calculate_grid_regularity(self, points: np.ndarray, grid_type: str) -> float:
+        """Calculate how regular a grid pattern is"""
+        if len(points) < 4:
+            return 0.0
+
+        # Use DBSCAN to find local neighborhoods
+        distances = squareform(pdist(points))
+        mean_dist = np.mean(distances[distances > 0])
+
+        # For each point, find its neighbors
+        regularity_scores = []
+        for i, point in enumerate(points):
+            neighbors = points[distances[i] < 1.5 * mean_dist]
+            if len(neighbors) > 3:
+                # Analyze local structure
+                local_score = self._analyze_local_structure(point, neighbors, grid_type)
+                regularity_scores.append(local_score)
+
+        return np.mean(regularity_scores) if regularity_scores else 0.0
+
+    def _analyze_neighbor_structure(self, points: np.ndarray, expected_neighbors: int) -> Dict[str, Any]:
+        """Analyze the neighbor structure of points"""
+        if len(points) < expected_neighbors:
+            return {'score': 0.0, 'avg_neighbors': 0}
+
+        distances = squareform(pdist(points))
+        mean_dist = np.mean(distances[distances > 0])
+        threshold = 1.5 * mean_dist
+
+        neighbor_counts = []
+        for i in range(len(points)):
+            neighbors = np.sum(distances[i] < threshold) - 1  # Exclude self
+            neighbor_counts.append(neighbors)
+
+        avg_neighbors = np.mean(neighbor_counts)
+
+        # Score based on how close to expected number
+        neighbor_score = max(0, 1 - abs(avg_neighbors - expected_neighbors) / expected_neighbors)
+
+        return {
+            'score': neighbor_score,
+            'avg_neighbors': avg_neighbors,
+            'neighbor_counts': neighbor_counts
+        }
+
+    def _analyze_triangular_angles(self, points: np.ndarray) -> float:
+        """Analyze angles for triangular grid characteristics (60-degree angles)"""
+        if len(points) < 3:
+            return 0.0
+
+        angles_60 = []
+        target_angle = np.pi / 3  # 60 degrees
+
+        for i, center in enumerate(points):
+            # Find nearby points
+            distances = np.sqrt(np.sum((points - center)**2, axis=1))
+            nearby_indices = np.where((distances > 0) & (distances < np.mean(distances) * 1.5))[0]
+
+            if len(nearby_indices) >= 2:
+                nearby_points = points[nearby_indices]
+                # Calculate angles between vectors from center to nearby points
+                vectors = nearby_points - center
+
+                for j in range(len(vectors)):
+                    for k in range(j+1, len(vectors)):
+                        v1, v2 = vectors[j], vectors[k]
+                        angle = np.arccos(np.clip(np.dot(v1, v2) /
+                                                (np.linalg.norm(v1) * np.linalg.norm(v2)), -1, 1))
+
+                        # Check if close to 60 degrees or 120 degrees
+                        angle_error_60 = abs(angle - target_angle)
+                        angle_error_120 = abs(angle - 2*target_angle)
+
+                        if angle_error_60 < np.pi/6 or angle_error_120 < np.pi/6:
+                            error = min(angle_error_60, angle_error_120)
+                            angles_60.append(1 - error / (np.pi/6))
+
+        return np.mean(angles_60) if angles_60 else 0.0
+
+    def _analyze_hexagonal_angles(self, points: np.ndarray) -> float:
+        """Analyze angles for hexagonal characteristics (120-degree angles)"""
+        if len(points) < 3:
+            return 0.0
+
+        angles_120 = []
+        target_angle = 2 * np.pi / 3  # 120 degrees
+
+        for i, center in enumerate(points):
+            distances = np.sqrt(np.sum((points - center)**2, axis=1))
+            nearby_indices = np.where((distances > 0) & (distances < np.mean(distances) * 1.5))[0]
+
+            if len(nearby_indices) >= 2:
+                nearby_points = points[nearby_indices]
+                vectors = nearby_points - center
+
+                for j in range(len(vectors)):
+                    for k in range(j+1, len(vectors)):
+                        v1, v2 = vectors[j], vectors[k]
+                        angle = np.arccos(np.clip(np.dot(v1, v2) /
+                                                (np.linalg.norm(v1) * np.linalg.norm(v2)), -1, 1))
+
+                        angle_error = abs(angle - target_angle)
+                        if angle_error < np.pi/3:
+                            angles_120.append(1 - angle_error / (np.pi/3))
+
+        return np.mean(angles_120) if angles_120 else 0.0
+
+    def _analyze_voronoi_regularity(self, points: np.ndarray, expected_sides: int) -> float:
+        """Analyze Voronoi diagram regularity"""
+        if len(points) < 4:
+            return 0.0
+
+        try:
+            vor = Voronoi(points)
+
+            # Analyze Voronoi cell properties
+            cell_regularity_scores = []
+
+            for point_idx, point in enumerate(points):
+                # Find the Voronoi cell for this point
+                region_idx = vor.point_region[point_idx]
+                if region_idx >= 0 and region_idx < len(vor.regions):
+                    region = vor.regions[region_idx]
+
+                    if len(region) > 0 and -1 not in region:
+                        # Calculate cell properties
+                        vertices = vor.vertices[region]
+                        if len(vertices) >= 3:
+                            # Check if number of sides is close to expected
+                            side_score = max(0, 1 - abs(len(vertices) - expected_sides) / expected_sides)
+
+                            # Check regularity of the polygon
+                            regularity_score = self._calculate_polygon_regularity(vertices)
+
+                            cell_score = (side_score + regularity_score) / 2
+                            cell_regularity_scores.append(cell_score)
+
+            return np.mean(cell_regularity_scores) if cell_regularity_scores else 0.0
+
+        except:
+            return 0.0
+
+    def _score_distance_ratios(self, distances: np.ndarray, min_dist: float, expected_ratios: List[float]) -> float:
+        """Score how well distance ratios match expected ratios"""
+        if min_dist == 0:
+            return 0.0
+
+        hist, bin_edges = np.histogram(distances, bins=20)
+        peaks = self._find_histogram_peaks(hist, bin_edges)
+
+        if not peaks:
+            return 0.0
+
+        ratio_scores = []
+        for peak in peaks[:len(expected_ratios)]:
+            peak_ratio = peak / min_dist
+            best_match = min(expected_ratios, key=lambda r: abs(r - peak_ratio))
+            error = abs(best_match - peak_ratio) / best_match
+            ratio_scores.append(max(0, 1 - error))
+
+        return np.mean(ratio_scores) if ratio_scores else 0.0
+
+    def _calculate_overall_regularity(self, points: np.ndarray) -> float:
+        """Calculate overall regularity of point distribution"""
+        if len(points) < 3:
+            return 0.0
+
+        # Measure various regularity metrics
+        distances = pdist(points)
+        cv_distance = np.std(distances) / np.mean(distances) if np.mean(distances) > 0 else 1.0
+
+        # Regular patterns have lower coefficient of variation
+        distance_regularity = max(0, 1 - cv_distance)
+
+        # Analyze neighbor consistency
+        neighbor_regularity = self._analyze_neighbor_consistency(points)
+
+        return (distance_regularity + neighbor_regularity) / 2
+
+    def _analyze_neighbor_consistency(self, points: np.ndarray) -> float:
+        """Analyze consistency of neighbor distances"""
+        if len(points) < 4:
+            return 0.0
+
+        neighbor_distances = []
+        for i, point in enumerate(points):
+            distances = np.sqrt(np.sum((points - point)**2, axis=1))
+            distances = distances[distances > 0]  # Remove self-distance
+            if len(distances) > 0:
+                neighbor_distances.append(np.min(distances))
+
+        if not neighbor_distances:
+            return 0.0
+
+        cv = np.std(neighbor_distances) / np.mean(neighbor_distances)
+        return max(0, 1 - cv)
+
+    def _identify_radial_layers(self, distances: np.ndarray) -> List[List[int]]:
+        """Identify concentric layers in radial pattern"""
+        if len(distances) < 2:
+            return []
+
+        # Use clustering to identify distance groups
+        sorted_indices = np.argsort(distances)
+        sorted_distances = distances[sorted_indices]
+
+        layers = []
+        current_layer = [sorted_indices[0]]
+        threshold = np.std(distances) * 0.5
+
+        for i in range(1, len(sorted_distances)):
+            if sorted_distances[i] - sorted_distances[i-1] < threshold:
+                current_layer.append(sorted_indices[i])
+            else:
+                layers.append(current_layer)
+                current_layer = [sorted_indices[i]]
+
+        if current_layer:
+            layers.append(current_layer)
+
+        return layers
+
+    def _analyze_angular_distribution(self, angles: np.ndarray) -> float:
+        """Analyze regularity of angular distribution"""
+        if len(angles) < 3:
+            return 0.0
+
+        # Sort angles
+        sorted_angles = np.sort(angles)
+
+        # Calculate angular differences
+        angle_diffs = np.diff(sorted_angles)
+        angle_diffs = np.append(angle_diffs, 2*np.pi + sorted_angles[0] - sorted_angles[-1])
+
+        # Regular patterns have consistent angular spacing
+        cv_angles = np.std(angle_diffs) / np.mean(angle_diffs) if np.mean(angle_diffs) > 0 else 1.0
+
+        return max(0, 1 - cv_angles)
+
+    def _score_radial_layers(self, layers: List[List[int]]) -> float:
+        """Score the quality of radial layer organization"""
+        if len(layers) < 2:
+            return 0.0
+
+        # Score based on layer count and uniformity
+        layer_sizes = [len(layer) for layer in layers]
+
+        # Prefer multiple layers with reasonable sizes
+        size_score = min(1.0, len(layers) / 5.0)  # Up to 5 layers is good
+
+        # Uniformity score (consistent layer sizes)
+        if len(layer_sizes) > 1:
+            cv_sizes = np.std(layer_sizes) / np.mean(layer_sizes)
+            uniformity_score = max(0, 1 - cv_sizes)
+        else:
+            uniformity_score = 0.5
+
+        return (size_score + uniformity_score) / 2
+
+    def _analyze_local_structure(self, center: np.ndarray, neighbors: np.ndarray, grid_type: str) -> float:
+        """Analyze local structure around a point"""
+        if len(neighbors) < 3:
+            return 0.0
+
+        # Calculate distances and angles
+        vectors = neighbors - center
+        distances = np.sqrt(np.sum(vectors**2, axis=1))
+
+        # Remove the center point itself
+        non_zero_mask = distances > 1e-6
+        if np.sum(non_zero_mask) < 2:
+            return 0.0
+
+        vectors = vectors[non_zero_mask]
+        distances = distances[non_zero_mask]
+
+        if grid_type == 'square':
+            return self._score_square_local_structure(vectors, distances)
+        elif grid_type == 'triangular':
+            return self._score_triangular_local_structure(vectors, distances)
+        elif grid_type == 'hexagonal':
+            return self._score_hexagonal_local_structure(vectors, distances)
+        else:
+            return 0.0
+
+    def _score_square_local_structure(self, vectors: np.ndarray, distances: np.ndarray) -> float:
+        """Score local structure for square grid"""
+        if len(vectors) < 2:
+            return 0.0
+
+        # Check for 90-degree angles
+        angles = []
+        for i in range(len(vectors)):
+            for j in range(i+1, len(vectors)):
+                v1, v2 = vectors[i], vectors[j]
+                angle = np.arccos(np.clip(np.dot(v1, v2) /
+                                        (np.linalg.norm(v1) * np.linalg.norm(v2)), -1, 1))
+                angles.append(angle)
+
+        if not angles:
+            return 0.0
+
+        # Score based on presence of 90-degree angles
+        right_angle_scores = []
+        for angle in angles:
+            error = min(abs(angle - np.pi/2), abs(angle - np.pi))
+            score = max(0, 1 - error / (np.pi/4))
+            right_angle_scores.append(score)
+
+        return np.mean(right_angle_scores)
+
+    def _score_triangular_local_structure(self, vectors: np.ndarray, distances: np.ndarray) -> float:
+        """Score local structure for triangular grid"""
+        if len(vectors) < 2:
+            return 0.0
+
+        # Check for 60-degree angles
+        angles = []
+        for i in range(len(vectors)):
+            for j in range(i+1, len(vectors)):
+                v1, v2 = vectors[i], vectors[j]
+                angle = np.arccos(np.clip(np.dot(v1, v2) /
+                                        (np.linalg.norm(v1) * np.linalg.norm(v2)), -1, 1))
+                angles.append(angle)
+
+        if not angles:
+            return 0.0
+
+        # Score based on presence of 60 or 120-degree angles
+        triangle_angle_scores = []
+        for angle in angles:
+            error_60 = abs(angle - np.pi/3)
+            error_120 = abs(angle - 2*np.pi/3)
+            error = min(error_60, error_120)
+            score = max(0, 1 - error / (np.pi/6))
+            triangle_angle_scores.append(score)
+
+        return np.mean(triangle_angle_scores)
+
+    def _score_hexagonal_local_structure(self, vectors: np.ndarray, distances: np.ndarray) -> float:
+        """Score local structure for hexagonal grid"""
+        if len(vectors) < 2:
+            return 0.0
+
+        # Check for 120-degree angles (primary) and 60-degree angles
+        angles = []
+        for i in range(len(vectors)):
+            for j in range(i+1, len(vectors)):
+                v1, v2 = vectors[i], vectors[j]
+                angle = np.arccos(np.clip(np.dot(v1, v2) /
+                                        (np.linalg.norm(v1) * np.linalg.norm(v2)), -1, 1))
+                angles.append(angle)
+
+        if not angles:
+            return 0.0
+
+        # Score based on hexagonal angles
+        hex_angle_scores = []
+        for angle in angles:
+            error_60 = abs(angle - np.pi/3)
+            error_120 = abs(angle - 2*np.pi/3)
+            error = min(error_60, error_120)
+            score = max(0, 1 - error / (np.pi/6))
+            hex_angle_scores.append(score)
+
+        return np.mean(hex_angle_scores)
+
+    def _calculate_polygon_regularity(self, vertices: np.ndarray) -> float:
+        """Calculate how regular a polygon is"""
+        if len(vertices) < 3:
+            return 0.0
+
+        # Calculate side lengths
+        sides = []
+        for i in range(len(vertices)):
+            next_i = (i + 1) % len(vertices)
+            side_length = np.sqrt(np.sum((vertices[next_i] - vertices[i])**2))
+            sides.append(side_length)
+
+        if not sides:
+            return 0.0
+
+        # Regular polygon has equal side lengths
+        cv_sides = np.std(sides) / np.mean(sides) if np.mean(sides) > 0 else 1.0
+        side_regularity = max(0, 1 - cv_sides)
+
+        # Calculate interior angles
+        angles = []
+        for i in range(len(vertices)):
+            prev_i = (i - 1) % len(vertices)
+            next_i = (i + 1) % len(vertices)
+
+            v1 = vertices[prev_i] - vertices[i]
+            v2 = vertices[next_i] - vertices[i]
+
+            angle = np.arccos(np.clip(np.dot(v1, v2) /
+                                    (np.linalg.norm(v1) * np.linalg.norm(v2)), -1, 1))
+            angles.append(angle)
+
+        if not angles:
+            return side_regularity
+
+        # Regular polygon has equal interior angles
+        cv_angles = np.std(angles) / np.mean(angles) if np.mean(angles) > 0 else 1.0
+        angle_regularity = max(0, 1 - cv_angles)
+
+        return (side_regularity + angle_regularity) / 2
+
+class ComplexityAnalyzer:
+    def __init__(self, identifier: MathematicalPrincipleIdentifier):
+        self.identifier = identifier
+
+    def calculate_complexity_score(self, points: List[Tuple[float, float]],
+                                 connections: Optional[List[Tuple[int, int]]] = None,
+                                 detected_patterns: Optional[Dict] = None) -> Dict[str, Any]:
+        """Calculate comprehensive complexity score"""
+        if not points:
+            return {'total_score': 0.0, 'components': {}}
+
+        points_array = np.array(points)
+
+        # Basic metrics
+        dot_count = len(points)
+
+        # Connection analysis
+        if connections is None:
+            connections = self._infer_connections(points_array)
+        connection_count = len(connections)
+
+        # Symmetry analysis
+        symmetry_score = self._analyze_symmetry(points_array)
+
+        # Pattern complexity
+        pattern_complexity = self._calculate_pattern_complexity(detected_patterns)
+
+        # Spatial distribution complexity
+        spatial_complexity = self._calculate_spatial_complexity(points_array)
+
+        # Topological complexity
+        topological_complexity = self._calculate_topological_complexity(points_array, connections)
+
+        # Individual component scores
+        components = {
+            'dot_count_factor': min(1.0, dot_count / 50.0),  # Normalize to reasonable range
+            'connection_density': connection_count / max(1, dot_count * (dot_count - 1) / 2),
+            'symmetry_score': symmetry_score,
+            'pattern_complexity': pattern_complexity,
+            'spatial_complexity': spatial_complexity,
+            'topological_complexity': topological_complexity
+        }
+
+        # Weighted total score
+        weights = {
+            'dot_count_factor': 0.15,
+            'connection_density': 0.20,
+            'symmetry_score': 0.15,
+            'pattern_complexity': 0.25,
+            'spatial_complexity': 0.15,
+            'topological_complexity': 0.10
+        }
+
+        total_score = sum(components[key] * weights[key] for key in weights)
+
+        # Scale to 0-100 range
+        total_score = min(100.0, total_score * 100)
+
+        return {
+            'total_score': total_score,
+            'components': components,
+            'weights': weights,
+            'metrics': {
+                'dot_count': dot_count,
+                'connection_count': connection_count,
+                'unique_connections': len(set(connections)) if connections else 0,
+                'symmetry_axes': self._count_symmetry_axes(points_array)
+            }
+        }
+
+    def _infer_connections(self, points: np.ndarray) -> List[Tuple[int, int]]:
+        """Infer likely connections between points"""
+        if len(points) < 2:
+            return []
+
+        distances = squareform(pdist(points))
+        connections = []
+
+        # Use threshold based on mean distance
+        mean_dist = np.mean(distances[distances > 0])
+        threshold = mean_dist * 1.2  # Connect nearby points
+
+        for i in range(len(points)):
+            for j in range(i + 1, len(points)):
+                if distances[i, j] < threshold:
+                    connections.append((i, j))
+
+        return connections
+
+    def _analyze_symmetry(self, points: np.ndarray) -> float:
+        """Analyze various types of symmetry"""
+        if len(points) < 3:
+            return 0.0
+
+        # Center the points
+        center = np.mean(points, axis=0)
+        centered_points = points - center
+
+        symmetry_scores = []
+
+        # Rotational symmetry
+        rotational_score = self._analyze_rotational_symmetry(centered_points)
+        symmetry_scores.append(rotational_score)
+
+        # Reflection symmetry
+        reflection_score = self._analyze_reflection_symmetry(centered_points)
+        symmetry_scores.append(reflection_score)
+
+        # Point symmetry (180-degree rotation)
+        point_symmetry_score = self._analyze_point_symmetry(centered_points)
+        symmetry_scores.append(point_symmetry_score)
+
+        return np.mean(symmetry_scores)
+
+    def _analyze_rotational_symmetry(self, points: np.ndarray) -> float:
+        """Analyze rotational symmetry"""
+        if len(points) < 3:
+            return 0.0
+
+        best_score = 0.0
+
+        # Test different rotation orders (2, 3, 4, 5, 6, 8, 10, 12)
+        for n in [2, 3, 4, 5, 6, 8, 10, 12]:
+            angle = 2 * np.pi / n
+            score = self._test_rotational_symmetry(points, angle, n)
+            best_score = max(best_score, score)
+
+        return best_score
+
+    def _test_rotational_symmetry(self, points: np.ndarray, angle: float, order: int) -> float:
+        """Test for specific rotational symmetry"""
+        cos_a, sin_a = np.cos(angle), np.sin(angle)
+        rotation_matrix = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
+
+        scores = []
+        current_points = points.copy()
+
+        for _ in range(order - 1):
+            # Rotate points
+            rotated_points = current_points @ rotation_matrix.T
+
+            # Find best matching with original points
+            matching_score = self._calculate_point_matching(points, rotated_points)
+            scores.append(matching_score)
+
+            current_points = rotated_points
+
+        return np.mean(scores) if scores else 0.0
+
+    def _calculate_point_matching(self, points1: np.ndarray, points2: np.ndarray,
+                                threshold: Optional[float] = None) -> float:
+        """Calculate how well two point sets match"""
+        if len(points1) != len(points2):
+            return 0.0
+
+        if threshold is None:
+            distances = pdist(points1)
+            threshold = np.mean(distances) * 0.1 if len(distances) > 0 else 0.1
+
+        # Find best matching using Hungarian algorithm approximation
+        distance_matrix = squareform(pdist(np.vstack([points1, points2])))
+        n = len(points1)
+        cross_distances = distance_matrix[:n, n:]
+
+        matches = 0
+        used_indices = set()
+
+        for i in range(n):
+            best_match = None
+            best_distance = float('inf')
+
+            for j in range(n):
+                if j not in used_indices and cross_distances[i, j] < best_distance:
+                    best_distance = cross_distances[i, j]
+                    best_match = j
+
+            if best_match is not None and best_distance < threshold:
+                matches += 1
+                used_indices.add(best_match)
+
+        return matches / n if n > 0 else 0.0
+
+    def _analyze_reflection_symmetry(self, points: np.ndarray) -> float:
+        """Analyze reflection symmetry"""
+        if len(points) < 3:
+            return 0.0
+
+        best_score = 0.0
+
+        # Test different reflection axes
+        num_test_angles = 12
+        for i in range(num_test_angles):
+            angle = i * np.pi / num_test_angles
+            score = self._test_reflection_symmetry(points, angle)
+            best_score = max(best_score, score)
+
+        return best_score
+
+    def _test_reflection_symmetry(self, points: np.ndarray, axis_angle: float) -> float:
+        """Test reflection symmetry about a line through origin"""
+        # Reflection matrix about line at angle axis_angle
+        cos_2a = np.cos(2 * axis_angle)
+        sin_2a = np.sin(2 * axis_angle)
+        reflection_matrix = np.array([[cos_2a, sin_2a], [sin_2a, -cos_2a]])
+
+        reflected_points = points @ reflection_matrix.T
+        return self._calculate_point_matching(points, reflected_points)
+
+    def _analyze_point_symmetry(self, points: np.ndarray) -> float:
+        """Analyze point symmetry (inversion through origin)"""
+        if len(points) < 2:
+            return 0.0
+
+        inverted_points = -points
+        return self._calculate_point_matching(points, inverted_points)
+
+    def _count_symmetry_axes(self, points: np.ndarray) -> int:
+        """Count number of symmetry axes"""
+        if len(points) < 3:
+            return 0
+
+        center = np.mean(points, axis=0)
+        centered_points = points - center
+
+        symmetry_count = 0
+        threshold = 0.7  # Threshold for considering symmetry
+
+        # Test reflection symmetries
+        num_test_angles = 24
+        for i in range(num_test_angles):
+            angle = i * np.pi / num_test_angles
+            score = self._test_reflection_symmetry(centered_points, angle)
+            if score > threshold:
+                symmetry_count += 1
+
+        return symmetry_count
+
+    def _calculate_pattern_complexity(self, patterns: Optional[Dict]) -> float:
+        """Calculate complexity based on detected patterns"""
+        if not patterns:
+            return 0.5  # Default moderate complexity
+
+        complexity_factors = []
+
+        # Fibonacci complexity
+        if 'fibonacci_analysis' in patterns:
+            fib_analysis = patterns['fibonacci_analysis']
+            if fib_analysis.get('is_fibonacci_spiral', False):
+                complexity_factors.append(0.8)  # High complexity for Fibonacci
+            else:
+                complexity_factors.append(0.3)
+
+        # Grid complexity
+        if 'grid_classification' in patterns:
+            grid_type = patterns['grid_classification'].get('grid_type', 'random')
+            grid_complexities = {
+                'square': 0.4,
+                'triangular': 0.6,
+                'hexagonal': 0.8,
+                'radial': 0.7,
+                'random': 0.2
+            }
+            complexity_factors.append(grid_complexities.get(grid_type, 0.5))
+
+        return np.mean(complexity_factors) if complexity_factors else 0.5
+
+    def _calculate_spatial_complexity(self, points: np.ndarray) -> float:
+        """Calculate spatial distribution complexity"""
+        if len(points) < 4:
+            return 0.0
+
+        # Analyze spatial distribution using various metrics
+        complexity_scores = []
+
+        # Convex hull ratio
+        if len(points) >= 3:
+            try:
+                hull = ConvexHull(points)
+                hull_area = hull.volume  # In 2D, volume is area
+
+                # Bounding box area
+                min_coords = np.min(points, axis=0)
+                max_coords = np.max(points, axis=0)
+                bbox_area = np.prod(max_coords - min_coords)
+
+                if bbox_area > 0:
+                    hull_ratio = hull_area / bbox_area
+                    complexity_scores.append(hull_ratio)
+            except:
+                pass
+
+        # Distance distribution complexity
+        distances = pdist(points)
+        if len(distances) > 0:
+            # Use entropy of distance histogram as complexity measure
+            hist, _ = np.histogram(distances, bins=min(10, len(distances)))
+            hist = hist / np.sum(hist)  # Normalize
+            hist = hist[hist > 0]  # Remove zeros
+
+            if len(hist) > 1:
+                entropy = -np.sum(hist * np.log2(hist))
+                max_entropy = np.log2(len(hist))
+                normalized_entropy = entropy / max_entropy if max_entropy > 0 else 0
+                complexity_scores.append(normalized_entropy)
+
+        # Nearest neighbor distribution
+        nn_distances = []
+        for i, point in enumerate(points):
+            other_points = np.delete(points, i, axis=0)
+            if len(other_points) > 0:
+                dists = np.sqrt(np.sum((other_points - point)**2, axis=1))
+                nn_distances.append(np.min(dists))
+
+        if nn_distances:
+            cv_nn = np.std(nn_distances) / np.mean(nn_distances) if np.mean(nn_distances) > 0 else 0
+            complexity_scores.append(min(1.0, cv_nn))
+
+        return np.mean(complexity_scores) if complexity_scores else 0.5
+
+    def _calculate_topological_complexity(self, points: np.ndarray,
+                                        connections: List[Tuple[int, int]]) -> float:
+        """Calculate topological complexity of the connection graph"""
+        if len(points) < 3 or not connections:
+            return 0.0
+
+        n = len(points)
+        m = len(connections)
+
+        # Graph density
+        max_edges = n * (n - 1) // 2
+        density = m / max_edges if max_edges > 0 else 0
+
+        # Create adjacency list
+        adj_list = defaultdict(list)
+        for i, j in connections:
+            adj_list[i].append(j)
+            adj_list[j].append(i)
+
+        # Degree distribution complexity
+        degrees = [len(adj_list[i]) for i in range(n)]
+        degree_variance = np.var(degrees) if degrees else 0
+        degree_complexity = min(1.0, degree_variance / (n / 4)) if n > 0 else 0
+
+        # Clustering coefficient
+        clustering_coeffs = []
+        for node in range(n):
+            neighbors = adj_list[node]
+            if len(neighbors) < 2:
+                clustering_coeffs.append(0.0)
+            else:
+                # Count triangles
+                triangles = 0
+                for i, neighbor1 in enumerate(neighbors):
+                    for neighbor2 in neighbors[i+1:]:
+                        if neighbor2 in adj_list[neighbor1]:
+                            triangles += 1
+
+                possible_triangles = len(neighbors) * (len(neighbors) - 1) // 2
+                clustering_coeffs.append(triangles / possible_triangles if possible_triangles > 0 else 0)
+
+        avg_clustering = np.mean(clustering_coeffs) if clustering_coeffs else 0
+
+        # Combine metrics
+        topological_score = (density + degree_complexity + avg_clustering) / 3
+
+        return min(1.0, topological_score)
+
+class EducationalExplainer:
+    def __init__(self, identifier: MathematicalPrincipleIdentifier):
+        self.identifier = identifier
+
+    def generate_explanation(self, analysis_results: Dict[str, Any]) -> Dict[str, str]:
+        """Generate educational explanations for detected patterns"""
+        explanations = {}
+
+        # Fibonacci explanation
+        if 'fibonacci_analysis' in analysis_results:
+            fib_result = analysis_results['fibonacci_analysis']
+            if fib_result.get('is_fibonacci_spiral', False):
+                explanations['fibonacci_spiral'] = self._explain_fibonacci_detection(fib_result)
+            else:
+                explanations['fibonacci_spiral'] = self._explain_fibonacci_absence(fib_result)
+
+        # Grid classification explanation
+        if 'grid_classification' in analysis_results:
+            grid_result = analysis_results['grid_classification']
+            grid_type = grid_result.get('grid_type', 'unknown')
+            explanations['grid_pattern'] = self._explain_grid_classification(grid_result)
+
+            # Add specific grid type explanation
+            if grid_type in self.identifier.educational_content:
+                explanations[f'{grid_type}_details'] = self.identifier.educational_content[grid_type]
+
+        # Complexity explanation
+        if 'complexity_analysis' in analysis_results:
+            complexity_result = analysis_results['complexity_analysis']
+            explanations['complexity'] = self._explain_complexity_score(complexity_result)
+
+        # Symmetry explanation
+        if 'symmetry_analysis' in analysis_results:
+            symmetry_result = analysis_results['symmetry_analysis']
+            explanations['symmetry'] = self._explain_symmetry_analysis(symmetry_result)
+
+        return explanations
+
+    def _explain_fibonacci_detection(self, fib_result: Dict[str, Any]) -> str:
+        """Explain Fibonacci spiral detection"""
+        confidence = fib_result.get('confidence', 0)
+        growth_rate = fib_result.get('growth_rate', 0)
+        turns = fib_result.get('spiral_turns', 0)
+
+        explanation = f"""
+        🌀 **Fibonacci Spiral Detected!** (Confidence: {confidence:.1%})
+
+        Your pattern exhibits characteristics of a Fibonacci spiral:
+
+        **Key Properties Found:**
+        • Growth rate: {growth_rate:.3f} (close to golden ratio growth)
+        • Spiral turns: {turns:.1f} complete rotations
+        • Golden ratio presence: {fib_result.get('golden_ratio_presence', 0):.1%}
+
+        **What makes this special:**
+        {self.identifier.educational_content['fibonacci_spiral'].strip()}
+
+        **Mathematical Significance:**
+        The golden ratio (φ ≈ 1.618) appears in your pattern, connecting it to:
+        - Natural growth patterns (nautilus shells, sunflower seeds)
+        - Architectural proportions (Parthenon, pyramids)
+        - Art and design principles
+        """
+
+        return explanation
+
+    def _explain_fibonacci_absence(self, fib_result: Dict[str, Any]) -> str:
+        """Explain why Fibonacci spiral was not detected"""
+        confidence = fib_result.get('confidence', 0)
+
+        explanation = f"""
+        📐 **Fibonacci Spiral Analysis** (Confidence: {confidence:.1%})
+
+        While your pattern shows some spiral characteristics, it doesn't strongly match
+        a Fibonacci spiral. This could mean:
+
+        **Possible Reasons:**
+        • The pattern follows a different mathematical progression
+        • It's based on a different growth ratio
+        • The spiral has uniform rather than accelerating growth
+        • The pattern is more geometric than organic
+
+        **Still Mathematically Interesting:**
+        Non-Fibonacci spirals are equally fascinating and include:
+        - Archimedean spirals (uniform growth)
+        - Logarithmic spirals with different ratios
+        - Geometric patterns with their own unique properties
+        """
+
+        return explanation
+
+    def _explain_grid_classification(self, grid_result: Dict[str, Any]) -> str:
+        """Explain grid classification results"""
+        grid_type = grid_result.get('grid_type', 'unknown')
+        confidence = grid_result.get('confidence', 0)
+        point_count = grid_result.get('point_count', 0)
+
+        type_descriptions = {
+            'square': 'Square/Rectangular Grid',
+            'triangular': 'Triangular Grid',
+            'hexagonal': 'Hexagonal Grid',
+            'radial': 'Radial/Circular Pattern',
+            'random': 'Random Distribution',
+            'insufficient_points': 'Insufficient Data'
+        }
+
+        type_name = type_descriptions.get(grid_type, 'Unknown Pattern')
+
+        explanation = f"""
+        🔷 **Grid Pattern Analysis**
+
+        **Detected Pattern:** {type_name} (Confidence: {confidence:.1%})
+        **Points Analyzed:** {point_count}
+
+        **Pattern Characteristics:**
+        """
+
+        if grid_type == 'square':
+            explanation += """
+            • Regular right angles (90°)
+            • Consistent horizontal and vertical spacing
+            • Each interior point has 4 neighbors
+            • Efficient for computer graphics and digital imaging
+            """
+        elif grid_type == 'triangular':
+            explanation += """
+            • Angles of 60° and 120°
+            • Each interior point has 6 neighbors
+            • Most efficient tessellation after hexagonal
+            • Used in crystallography and finite element analysis
+            """
+        elif grid_type == 'hexagonal':
+            explanation += """
+            • Perfect 120° angles between connections
+            • Each interior point has 6 neighbors
+            • Most efficient way to divide space (Honeycomb Conjecture)
+            • Nature's preferred pattern (honeycombs, basalt columns)
+            """
+        elif grid_type == 'radial':
+            explanation += """
+            • Points organized in concentric circles or layers
+            • Exhibits rotational symmetry
+            • Common in natural forms (flowers, starfish)
+            • Often seen in mandalas and decorative art
+            """
+        elif grid_type == 'random':
+            explanation += """
+            • No clear geometric organization
+            • Irregular spacing and angles
+            • May represent natural scatter or noise
+            • Still has statistical properties worth studying
+            """
+
+        return explanation
+
+    def _explain_complexity_score(self, complexity_result: Dict[str, Any]) -> str:
+        """Explain complexity score components"""
+        total_score = complexity_result.get('total_score', 0)
+        components = complexity_result.get('components', {})
+        metrics = complexity_result.get('metrics', {})
+
+        # Determine complexity level
+        if total_score < 25:
+            level = "Simple"
+            level_desc = "Low complexity with basic geometric properties"
+        elif total_score < 50:
+            level = "Moderate"
+            level_desc = "Medium complexity with some interesting patterns"
+        elif total_score < 75:
+            level = "Complex"
+            level_desc = "High complexity with sophisticated mathematical properties"
+        else:
+            level = "Very Complex"
+            level_desc = "Extremely complex with advanced mathematical structures"
+
+        explanation = f"""
+        📊 **Pattern Complexity Analysis**
+
+        **Overall Complexity Score:** {total_score:.1f}/100 ({level})
+        {level_desc}
+
+        **Contributing Factors:**
+        • **Point Count:** {metrics.get('dot_count', 0)} points
+        • **Connections:** {metrics.get('connection_count', 0)} total connections
+        • **Symmetry Axes:** {metrics.get('symmetry_axes', 0)} detected
+
+        **Detailed Breakdown:**
+        """
+
+        component_explanations = {
+            'dot_count_factor': 'Scale contribution',
+            'connection_density': 'Network connectivity',
+            'symmetry_score': 'Symmetrical organization',
+            'pattern_complexity': 'Mathematical pattern sophistication',
+            'spatial_complexity': 'Spatial distribution complexity',
+            'topological_complexity': 'Network structure complexity'
+        }
+
+        for component, score in components.items():
+            name = component_explanations.get(component, component)
+            percentage = score * 100
+            explanation += f"• {name}: {percentage:.1f}%\n        "
+
+        explanation += f"""
+
+        **What This Means:**
+        A complexity score of {total_score:.1f} indicates your pattern has {level.lower()}
+        mathematical properties. {'Higher' if total_score > 50 else 'Lower'} scores suggest
+        {'more' if total_score > 50 else 'less'} sophisticated underlying mathematical
+        relationships and {'greater' if total_score > 50 else 'simpler'} structural organization.
+        """
+
+        return explanation
+
+    def _explain_symmetry_analysis(self, symmetry_result: Dict[str, Any]) -> str:
+        """Explain symmetry analysis results"""
+        # This would be implemented based on symmetry analysis results
+        return """
+        🔄 **Symmetry Analysis**
+
+        Symmetry is a fundamental concept in mathematics and nature, representing
+        balance and proportion in patterns. Your pattern's symmetry properties
+        reveal its underlying mathematical structure.
+        """
+
+class EnhancedMathematicalPrincipleIdentifier:
+    """Main class that orchestrates all analysis components"""
+
+    def __init__(self):
+        self.identifier = MathematicalPrincipleIdentifier()
+        self.pattern_detector = PatternDetector(self.identifier)
+        self.fibonacci_analyzer = FibonacciAnalyzer(self.identifier)
+        self.grid_classifier = GridClassifier(self.identifier)
+        self.complexity_analyzer = ComplexityAnalyzer(self.identifier)
+        self.educational_explainer = EducationalExplainer(self.identifier)
+
+    def analyze_pattern(self, points: List[Tuple[float, float]],
+                       connections: Optional[List[Tuple[int, int]]] = None,
+                       image: Optional[np.ndarray] = None) -> Dict[str, Any]:
+        """Comprehensive pattern analysis"""
+
+        # If image is provided, detect points from image
+        if image is not None and not points:
+            detected_points = self.pattern_detector.detect_dots_from_image(image)
+            points = [(float(x), float(y)) for x, y in detected_points]
+
+        if not points:
+            return {'error': 'No points provided for analysis'}
+
+        print(f"Analyzing pattern with {len(points)} points...")
+
+        results = {}
+
+        # Fibonacci spiral analysis
+        print("🌀 Analyzing Fibonacci spiral patterns...")
+        fib_analysis = self.fibonacci_analyzer.analyze_spiral_pattern(points)
+        results['fibonacci_analysis'] = fib_analysis
+
+        # Grid classification
+        print("🔷 Classifying grid pattern...")
+        grid_analysis = self.grid_classifier.classify_grid_type(points)
+        results['grid_classification'] = grid_analysis
+
+        # Complexity analysis
+        print("📊 Calculating complexity score...")
+        complexity_analysis = self.complexity_analyzer.calculate_complexity_score(
+            points, connections, {'fibonacci_analysis': fib_analysis, 'grid_classification': grid_analysis}
+        )
+        results['complexity_analysis'] = complexity_analysis
+
+        # Educational explanations
+        print("📚 Generating educational explanations...")
+        explanations = self.educational_explainer.generate_explanation(results)
+        results['educational_explanations'] = explanations
+
+        # Summary
+        results['summary'] = self._generate_summary(results)
+
+        return results
+
+    def _generate_summary(self, results: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate a summary of all findings"""
+        summary = {}
+
+        # Fibonacci summary
+        fib_result = results.get('fibonacci_analysis', {})
+        summary['has_fibonacci_spiral'] = fib_result.get('is_fibonacci_spiral', False)
+        summary['fibonacci_confidence'] = fib_result.get('confidence', 0.0)
+
+        # Grid summary
+        grid_result = results.get('grid_classification', {})
+        summary['grid_type'] = grid_result.get('grid_type', 'unknown')
+        summary['grid_confidence'] = grid_result.get('confidence', 0.0)
+
+        # Complexity summary
+        complexity_result = results.get('complexity_analysis', {})
+        summary['complexity_score'] = complexity_result.get('total_score', 0.0)
+
+        # Overall assessment
+        if summary['complexity_score'] > 70:
+            summary['overall_assessment'] = "Highly sophisticated mathematical pattern"
+        elif summary['complexity_score'] > 50:
+            summary['overall_assessment'] = "Moderately complex mathematical structure"
+        elif summary['complexity_score'] > 25:
+            summary['overall_assessment'] = "Simple geometric pattern"
+        else:
+            summary['overall_assessment'] = "Basic point distribution"
+
+        return summary
+
+    def visualize_analysis(self, points: List[Tuple[float, float]],
+                          analysis_results: Dict[str, Any],
+                          connections: Optional[List[Tuple[int, int]]] = None,
+                          figsize: Tuple[int, int] = (15, 12)) -> None:
+        """Create comprehensive visualization of the analysis"""
+
+        if not points:
+            print("No points to visualize")
+            return
+
+        fig, axes = plt.subplots(2, 3, figsize=figsize)
+        fig.suptitle('Mathematical Principle Identification Analysis', fontsize=16, fontweight='bold')
+
+        points_array = np.array(points)
+
+        # 1. Original pattern
+        ax1 = axes[0, 0]
+        ax1.scatter(points_array[:, 0], points_array[:, 1], c='blue', s=50, alpha=0.7)
+        if connections:
+            for i, j in connections:
+                if i < len(points) and j < len(points):
+                    ax1.plot([points[i][0], points[j][0]], [points[i][1], points[j][1]],
+                            'gray', alpha=0.5, linewidth=1)
+        ax1.set_title('Original Pattern')
+        ax1.set_aspect('equal')
+        ax1.grid(True, alpha=0.3)
+
+        # 2. Fibonacci analysis visualization
+        ax2 = axes[0, 1]
+        fib_result = analysis_results.get('fibonacci_analysis', {})
+        if fib_result.get('is_fibonacci_spiral', False):
+            # Color points by spiral order
+            center = np.mean(points_array, axis=0)
+            distances = np.sqrt(np.sum((points_array - center)**2, axis=1))
+            colors = distances / np.max(distances) if np.max(distances) > 0 else distances
+            scatter = ax2.scatter(points_array[:, 0], points_array[:, 1],
+                                c=colors, cmap='golden', s=60)
+            plt.colorbar(scatter, ax=ax2, label='Distance from Center')
+            ax2.set_title(f'Fibonacci Analysis\n(Confidence: {fib_result.get("confidence", 0):.1%})')
+        else:
+            ax2.scatter(points_array[:, 0], points_array[:, 1], c='red', s=50, alpha=0.7)
+            ax2.set_title('No Fibonacci Spiral Detected')
+        ax2.set_aspect('equal')
+        ax2.grid(True, alpha=0.3)
+
+        # 3. Grid classification
+        ax3 = axes[0, 2]
+        grid_result = analysis_results.get('grid_classification', {})
+        grid_type = grid_result.get('grid_type', 'unknown')
+        grid_colors = {
+            'square': 'red',
+            'triangular': 'green',
+            'hexagonal': 'orange',
+            'radial': 'purple',
+            'random': 'gray'
+        }
+        color = grid_colors.get(grid_type, 'black')
+        ax3.scatter(points_array[:, 0], points_array[:, 1], c=color, s=50, alpha=0.7)
+        ax3.set_title(f'Grid Type: {grid_type.title()}\n(Confidence: {grid_result.get("confidence", 0):.1%})')
+        ax3.set_aspect('equal')
+        ax3.grid(True, alpha=0.3)
+
+        # 4. Complexity breakdown
+        ax4 = axes[1, 0]
+        complexity_result = analysis_results.get('complexity_analysis', {})
+        components = complexity_result.get('components', {})
+        if components:
+            comp_names = list(components.keys())
+            comp_values = [components[name] * 100 for name in comp_names]
+            comp_names = [name.replace('_', ' ').title() for name in comp_names]
+
+            bars = ax4.barh(comp_names, comp_values)
+            ax4.set_xlabel('Score (%)')
+            ax4.set_title('Complexity Components')
+            ax4.set_xlim(0, 100)
+
+            # Color bars by value
+            for bar, value in zip(bars, comp_values):
+                if value > 75:
+                    bar.set_color('darkgreen')
+                elif value > 50:
+                    bar.set_color('orange')
+                else:
+                    bar.set_color('lightcoral')
+        else:
+            ax4.text(0.5, 0.5, 'No complexity data', ha='center', va='center', transform=ax4.transAxes)
+            ax4.set_title('Complexity Analysis')
+
+        # 5. Distance distribution
+        ax5 = axes[1, 1]
+        distances = pdist(points_array)
+        if len(distances) > 0:
+            ax5.hist(distances, bins=min(20, len(distances)), alpha=0.7, color='skyblue', edgecolor='black')
+            ax5.set_xlabel('Distance')
+            ax5.set_ylabel('Frequency')
+            ax5.set_title('Point Distance Distribution')
+            ax5.grid(True, alpha=0.3)
+        else:
+            ax5.text(0.5, 0.5, 'Insufficient data', ha='center', va='center', transform=ax5.transAxes)
+            ax5.set_title('Distance Distribution')
+
+        # 6. Summary statistics
+        ax6 = axes[1, 2]
+        ax6.axis('off')
+
+        summary = analysis_results.get('summary', {})
+        summary_text = f"""
+        Summary Statistics
+
+        Points: {len(points)}
+        Grid Type: {summary.get('grid_type', 'Unknown').title()}
+
+        Fibonacci Spiral: {'✓' if summary.get('has_fibonacci_spiral', False) else '✗'}
+        Confidence: {summary.get('fibonacci_confidence', 0):.1%}
+
+        Complexity Score: {summary.get('complexity_score', 0):.1f}/100
+
+        Assessment:
+        {summary.get('overall_assessment', 'No assessment available')}
+        """
+
+        ax6.text(0.05, 0.95, summary_text, transform=ax6.transAxes, fontsize=10,
+                verticalalignment='top', fontfamily='monospace',
+                bbox=dict(boxstyle='round,pad=0.5', facecolor='lightgray', alpha=0.8))
+
+        plt.tight_layout()
+        plt.show()
+
+    def create_educational_report(self, analysis_results: Dict[str, Any]) -> str:
+        """Create a comprehensive educational report"""
+        explanations = analysis_results.get('educational_explanations', {})
+        summary = analysis_results.get('summary', {})
+
+        report = f"""
+        ═══════════════════════════════════════════════════════════════════════════════
+        📊 MATHEMATICAL PRINCIPLE IDENTIFICATION REPORT
+        ═══════════════════════════════════════════════════════════════════════════════
+
+        🎯 EXECUTIVE SUMMARY
+        {'-' * 50}
+        Overall Assessment: {summary.get('overall_assessment', 'Unknown')}
+        Complexity Score: {summary.get('complexity_score', 0):.1f}/100
+        Dominant Pattern: {summary.get('grid_type', 'Unknown').title()} Grid
+
+        """
+
+        # Add each explanation section
+        for title, explanation in explanations.items():
+            clean_title = title.replace('_', ' ').title()
+            report += f"\n        📋 {clean_title.upper()}\n        {'-' * 50}\n        {explanation}\n"
+
+        report += f"""
+
+        ═══════════════════════════════════════════════════════════════════════════════
+        🔬 TECHNICAL SPECIFICATIONS
+        ═══════════════════════════════════════════════════════════════════════════════
+
+        Analysis Components:
+        • Fibonacci Sequence Detection: Advanced spiral pattern analysis
+        • Grid Type Classification: Multi-algorithm geometric classification
+        • Complexity Scoring: Comprehensive mathematical complexity metrics
+        • Educational Integration: Contextual mathematical explanations
+
+        Algorithms Used:
+        • Polar coordinate spiral analysis
+        • Voronoi diagram tessellation analysis
+        • Graph theory topological analysis
+        • Statistical pattern recognition
+        • Symmetry group detection
+
+        ═══════════════════════════════════════════════════════════════════════════════
+        """
+
+        return report
+
+# Example usage and demo functions
+def create_sample_patterns():
+    """Create sample patterns for demonstration"""
+    patterns = {}
+
+    # Fibonacci spiral approximation
+    fibonacci_points = []
+    for i in range(20):
+        angle = i * 0.5
+        radius = i * 0.3
+        x = radius * np.cos(angle)
+        y = radius * np.sin(angle)
+        fibonacci_points.append((x, y))
+    patterns['fibonacci_spiral'] = fibonacci_points
+
+    # Square grid
+    square_points = []
+    for i in range(5):
+        for j in range(5):
+            square_points.append((i * 2.0, j * 2.0))
+    patterns['square_grid'] = square_points
+
+    # Hexagonal grid approximation
+    hex_points = []
+    for row in range(4):
+        for col in range(5):
+            x = col * 2.0 + (row % 2) * 1.0
+            y = row * 1.732  # sqrt(3)
+            hex_points.append((x, y))
+    patterns['hexagonal_grid'] = hex_points
+
+    # Random pattern
+    np.random.seed(42)
+    random_points = [(np.random.uniform(0, 10), np.random.uniform(0, 10)) for _ in range(20)]
+    patterns['random_pattern'] = random_points
+
+    return patterns
+
+def demo_analysis():
+    """Demonstrate the enhanced mathematical principle identifier"""
+    print("🚀 Enhanced Mathematical Principle Identifier Demo")
+    print("=" * 60)
+
+    # Initialize the analyzer
+    analyzer = EnhancedMathematicalPrincipleIdentifier()
+
+    # Create sample patterns
+    patterns = create_sample_patterns()
+
+    for pattern_name, points in patterns.items():
+        print(f"\n🔍 Analyzing {pattern_name.replace('_', ' ').title()}...")
+        print("-" * 40)
+
+        # Perform analysis
+        results = analyzer.analyze_pattern(points)
+
+        # Display results
+        if 'error' not in results:
+            summary = results.get('summary', {})
+            print(f"Grid Type: {summary.get('grid_type', 'Unknown').title()}")
+            print(f"Complexity: {summary.get('complexity_score', 0):.1f}/100")
+            print(f"Fibonacci Spiral: {'Yes' if summary.get('has_fibonacci_spiral', False) else 'No'}")
+            print(f"Assessment: {summary.get('overall_assessment', 'Unknown')}")
+
+            # Create visualization
+            analyzer.visualize_analysis(points, results)
+
+            # Generate educational report
+            report = analyzer.create_educational_report(results)
+            print("\n📋 Educational Report Generated!")
+            print(f"Report length: {len(report)} characters")
+        else:
+            print(f"Error: {results['error']}")
+
+# For Google Colab compatibility
+def setup_colab_environment():
+    """Setup function for Google Colab"""
+    import matplotlib.pyplot as plt
+    plt.style.use('default')
+
+    print("🔧 Setting up Enhanced Mathematical Principle Identifier for Colab...")
+    print("✅ Environment configured successfully!")
+
+    return EnhancedMathematicalPrincipleIdentifier()
+
+if __name__ == "__main__":
+    # Run demo if executed directly
+    demo_analysis()
